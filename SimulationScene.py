@@ -1,6 +1,7 @@
 import carla
 import random
 import logging
+from utils import config_transform_to_carla_transform
 
 
 class SimulationScene:
@@ -123,6 +124,47 @@ class SimulationScene:
             self.world.get_actor(walker_id).go_to_location(destination)
             # 行人最大速度
             self.world.get_actor(walker_id).set_max_speed(10)
+
+    # 生成agent（用于放置传感器的车辆与传感器）
+    def spawn_agent(self):
+        vehicle_bp = random.choice(self.world.get_blueprint_library().filter(self.cfg["AGENT_CONFIG"]["BLUEPRINT"]))
+        trans_cfg = self.cfg["AGENT_CONFIG"]["TRANSFORM"]
+        carla_transform = config_transform_to_carla_transform(trans_cfg)
+        # transform = random.choice(self.world.get_map().get_spawn_points())
+        agent = self.world.spawn_actor(vehicle_bp, carla_transform)
+        agent.set_autopilot(False, self.traffic_manager.get_port())
+        self.actors["agents"].append(agent)
+
+        # 生成config中的传感器
+        self.actors["sensors"][agent] = []
+        for sensor, config in self.cfg["SENSOR_CONFIG"].items():
+            sensor_bp = self.world.get_blueprint_library().find(config["BLUEPRINT"])
+            for attr, val in config["ATTRIBUTE"].items():
+                sensor_bp.set_attribute(attr, str(val))
+            trans_cfg = config["TRANSFORM"]
+            carla_transform = config_transform_to_carla_transform(trans_cfg)
+            sensor = self.world.spawn_actor(sensor_bp, carla_transform, attach_to=agent)
+            self.actors["sensors"][agent].append(sensor)
+        self.world.tick()
+
+    # 设置观察视角(与RGB相机一致)
+    def set_spectator(self):
+        spectator = self.world.get_spectator()
+
+        # agent(放置传感器的车辆)位姿「相对世界坐标系」
+        agent_trans_cfg = self.cfg["AGENT_CONFIG"]["TRANSFORM"]
+        agent_transform = config_transform_to_carla_transform(agent_trans_cfg)
+
+        # RGB相机位姿「相对agent坐标系」
+        rgb_trans_cfg = self.cfg["SENSOR_CONFIG"]["RGB"]["TRANSFORM"]
+        rgb_transform = config_transform_to_carla_transform(rgb_trans_cfg)
+
+        # spectator位姿「相对世界坐标系」
+        spectator_location = agent_transform.location + rgb_transform.location
+        spectator_rotation = carla.Rotation(yaw=agent_transform.rotation.yaw + rgb_transform.rotation.yaw,
+                                            pitch=agent_transform.rotation.pitch + rgb_transform.rotation.pitch,
+                                            roll=agent_transform.rotation.roll + rgb_transform.rotation.roll)
+        spectator.set_transform(carla.Transform(spectator_location, spectator_rotation))
 
     # 恢复默认设置
     def set_recover(self):

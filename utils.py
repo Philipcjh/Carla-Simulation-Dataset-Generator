@@ -3,21 +3,20 @@ import yaml
 import carla
 
 
-def config_from_yaml(file):
-    with open(file, 'r') as f:
-        try:
+def yaml_to_config(file):
+    try:
+        with open(file, 'r') as f:
             config = yaml.load(f, Loader=yaml.FullLoader)
-        except:
-            config = yaml.load(f)
+            return config
+    except:
+        return None
 
-    return config
 
-
-def trans_from_config(trans_config):
-    transform = carla.Transform(carla.Location(trans_config["location"][0],
+def config_transform_to_carla_transform(trans_config):
+    carla_transform = carla.Transform(carla.Location(trans_config["location"][0],
                                                trans_config["location"][1],
                                                trans_config["location"][2]),
                                 carla.Rotation(trans_config["rotation"][0],
                                                trans_config["rotation"][1],
                                                trans_config["rotation"][2]))
-    return transform
+    return carla_transform

@@ -10,7 +10,7 @@ SENSOR_CONFIG:
   RGB:
     TRANSFORM: { location: [ 10, 0, 4 ], rotation: [ -20, -90, 0 ]}
     BLUEPRINT: sensor.camera.rgb
-    ATTRIBUTE: {image_size_x: 720, image_size_y: 360, fov: 90}
+    ATTRIBUTE: { image_size_x: 720, image_size_y: 360, fov: 90 }
 
   DEPTH_RGB:
     TRANSFORM: { location: [ 10, 0, 4 ], rotation: [ -20, -90, 0 ]}
