@@ -3,11 +3,14 @@ import random
 import logging
 import queue
 import numpy as np
-from utils import config_transform_to_carla_transform, set_camera_intrinsic, filter_by_distance
+from utils import config_transform_to_carla_transform, set_camera_intrinsic, object_filter_by_distance
 
 
 class SimulationScene:
     def __init__(self, config):
+        """
+            初始化
+        """
         self.config = config
         self.client = carla.Client('localhost', 2000)
         self.client.set_timeout(5.0)
@@ -20,8 +23,10 @@ class SimulationScene:
         self.data = {"sensor_data": {}, "environment_data": None}  # 记录每一帧的数据
         self.vehicle = None
 
-    # 开启同步模式
     def set_synchrony(self):
+        """
+            开启同步模式
+        """
         self.init_settings = self.world.get_settings()
         settings = self.world.get_settings()
         weather = carla.WeatherParameters(cloudiness=0.0, precipitation=0.0, sun_altitude_angle=50.0)
@@ -31,8 +36,10 @@ class SimulationScene:
         settings.fixed_delta_seconds = 0.05
         self.world.apply_settings(settings)
 
-    # 在场景中生成actors(车辆与行人)
     def spawn_actors(self):
+        """
+            在场景中生成actors(车辆与行人)
+        """
         # 生成车辆
         num_of_vehicles = self.config["CARLA_CONFIG"]["NUM_OF_VEHICLES"]
         blueprints = self.world.get_blueprint_library().filter("vehicle.*")
@@ -95,8 +102,10 @@ class SimulationScene:
                                                         len(self.actors["walkers"])))
         self.world.tick()
 
-    # 设置actors自动运动
     def set_actors_route(self):
+        """
+            设置actors自动运动
+        """
         # 设置车辆Autopilot
         self.traffic_manager.set_global_distance_to_leading_vehicle(1.0)
         self.traffic_manager.set_synchronous_mode(True)
@@ -127,8 +136,10 @@ class SimulationScene:
             # 行人最大速度
             self.world.get_actor(walker_id).set_max_speed(10)
 
-    # 生成agent（用于放置传感器的车辆与传感器）
     def spawn_agent(self):
+        """
+            生成agent（用于放置传感器的车辆与传感器）
+        """
         vehicle_bp = random.choice(self.world.get_blueprint_library().filter(self.config["AGENT_CONFIG"]["BLUEPRINT"]))
         config_transform = self.config["AGENT_CONFIG"]["TRANSFORM"]
         carla_transform = config_transform_to_carla_transform(config_transform)
@@ -149,8 +160,10 @@ class SimulationScene:
             self.actors["sensors"][agent].append(sensor)
         self.world.tick()
 
-    # 设置观察视角(与RGB相机一致)
     def set_spectator(self):
+        """
+            设置观察视角(与RGB相机一致)
+        """
         spectator = self.world.get_spectator()
 
         # agent(放置传感器的车辆)位姿「相对世界坐标系」
@@ -168,8 +181,10 @@ class SimulationScene:
                                             roll=agent_transform.rotation.roll + rgb_transform.rotation.roll)
         spectator.set_transform(carla.Transform(spectator_location, spectator_rotation))
 
-    # 恢复默认设置
     def set_recover(self):
+        """
+            数据采集结束后，恢复默认设置
+        """
         self.world.apply_settings(self.init_settings)
         self.traffic_manager.set_synchronous_mode(False)
         batch = []
@@ -183,8 +198,10 @@ class SimulationScene:
             agent.destroy()
         self.client.apply_batch_sync(batch)
 
-    # 监听传感器信息
     def listen_sensor_data(self):
+        """
+            监听传感器信息
+        """
         for agent, sensors in self.actors["sensors"].items():
             self.data["sensor_data"][agent] = []
             for sensor in sensors:
@@ -192,8 +209,16 @@ class SimulationScene:
                 self.data["sensor_data"][agent].append(q)
                 sensor.listen(q.put)
 
-    # 检查并获取传感器数据
     def retrieve_data(self, q):
+        """
+            检查并获取传感器数据
+
+            参数：
+                q: CARLA原始数据
+
+            返回：
+                data：检查后的数据
+        """
         while True:
             data = q.get()
             # 检查传感器数据与场景是否处于同一帧
@@ -201,32 +226,41 @@ class SimulationScene:
                 return data
 
     def record_tick(self):
-        ret = {"environment_objects": None, "actors": None, "agents_data": {}}
+        """
+            记录帧
+
+            返回：
+                data：CARLA传感器相关数据（原始数据，内参，外参等）
+        """
+        data = {"environment_objects": None, "actors": None, "agents_data": {}}
+        datasets = {"agents_data": {}}
         self.frame = self.world.tick()
 
-        ret["environment_objects"] = self.world.get_environment_objects(carla.CityObjectLabel.Any)
-        ret["actors"] = self.world.get_actors()
+        data["environment_objects"] = self.world.get_environment_objects(carla.CityObjectLabel.Any)
+        data["actors"] = self.world.get_actors()
 
-        # 生成RGB图像分辨率
+        # 生成RGB图像的分辨率
         image_width = self.config["SENSOR_CONFIG"]["RGB"]["ATTRIBUTE"]["image_size_x"]
         image_height = self.config["SENSOR_CONFIG"]["RGB"]["ATTRIBUTE"]["image_size_y"]
 
         for agent, dataQue in self.data["sensor_data"].items():
-
-            data = [self.retrieve_data(q) for q in dataQue]
-            assert all(x.frame == self.frame for x in data)
-            ret["agents_data"][agent] = {}
-            ret["agents_data"][agent]["sensor_data"] = data
+            original_data = [self.retrieve_data(q) for q in dataQue]
+            assert all(x.frame == self.frame for x in original_data)
+            data["agents_data"][agent] = {}
+            data["agents_data"][agent]["sensor_data"] = data
             # 设置传感器内参（仅相机有内参）
-            ret["agents_data"][agent]["intrinsic"] = set_camera_intrinsic(image_width, image_height)
+            data["agents_data"][agent]["intrinsic"] = set_camera_intrinsic(image_width, image_height)
             # 设置传感器外参
-            ret["agents_data"][agent]["extrinsic"] = np.mat(
+            data["agents_data"][agent]["extrinsic"] = np.mat(
                 self.actors["sensors"][agent][0].get_transform().get_matrix())
             # 设置传感器的carla位姿
-            ret["agents_data"][agent]["location"] = self.actors["sensors"][agent][0].get_transform()
+            data["agents_data"][agent]["location"] = self.actors["sensors"][agent][0].get_transform()
+
+            datasets["agents_data"] = {}
 
         # 根据预设距离对场景中的物体进行过滤
-        filter_by_distance(ret, self.config["FILTER_CONFIG"]["PRELIMINARY_FILTER_DISTANCE"])
-        return ret
+        data = object_filter_by_distance(data, self.config["FILTER_CONFIG"]["PRELIMINARY_FILTER_DISTANCE"])
+
+        return datasets
 
 

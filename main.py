@@ -27,10 +27,12 @@ def main():
         while True:
             if frame % STEP == 0:
                 # 记录帧
-                scene.record_tick()
+                data = scene.record_tick()
             else:
                 # 运行帧
                 scene.world.tick()
+
+            frame += 1
     finally:
         # 恢复默认设置
         scene.set_recover()
