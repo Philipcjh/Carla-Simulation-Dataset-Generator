@@ -1,12 +1,14 @@
 import carla
 import random
 import logging
-from utils import config_transform_to_carla_transform
+import queue
+import numpy as np
+from utils import config_transform_to_carla_transform, camera_intrinsic
 
 
 class SimulationScene:
-    def __init__(self, cfg):
-        self.cfg = cfg
+    def __init__(self, config):
+        self.config = config
         self.client = carla.Client('localhost', 2000)
         self.client.set_timeout(5.0)
         # 设置Carla地图
@@ -32,7 +34,7 @@ class SimulationScene:
     # 在场景中生成actors(车辆与行人)
     def spawn_actors(self):
         # 生成车辆
-        num_of_vehicles = self.cfg["CARLA_CONFIG"]["NUM_OF_VEHICLES"]
+        num_of_vehicles = self.config["CARLA_CONFIG"]["NUM_OF_VEHICLES"]
         blueprints = self.world.get_blueprint_library().filter("vehicle.*")
         blueprints = sorted(blueprints, key=lambda bp: bp.id)
         spawn_points = self.world.get_map().get_spawn_points()
@@ -67,7 +69,7 @@ class SimulationScene:
                     self.actors["non_agents"].append(response.actor_id)
 
         # 生成行人
-        num_of_walkers = self.cfg["CARLA_CONFIG"]["NUM_OF_WALKERS"]
+        num_of_walkers = self.config["CARLA_CONFIG"]["NUM_OF_WALKERS"]
         blueprintsWalkers = self.world.get_blueprint_library().filter("walker.pedestrian.*")
         spawn_points = []
         for i in range(num_of_walkers):
@@ -127,22 +129,22 @@ class SimulationScene:
 
     # 生成agent（用于放置传感器的车辆与传感器）
     def spawn_agent(self):
-        vehicle_bp = random.choice(self.world.get_blueprint_library().filter(self.cfg["AGENT_CONFIG"]["BLUEPRINT"]))
-        trans_cfg = self.cfg["AGENT_CONFIG"]["TRANSFORM"]
-        carla_transform = config_transform_to_carla_transform(trans_cfg)
+        vehicle_bp = random.choice(self.world.get_blueprint_library().filter(self.config["AGENT_CONFIG"]["BLUEPRINT"]))
+        config_transform = self.config["AGENT_CONFIG"]["TRANSFORM"]
+        carla_transform = config_transform_to_carla_transform(config_transform)
         # transform = random.choice(self.world.get_map().get_spawn_points())
         agent = self.world.spawn_actor(vehicle_bp, carla_transform)
         agent.set_autopilot(False, self.traffic_manager.get_port())
         self.actors["agents"].append(agent)
 
-        # 生成config中的传感器
+        # 生成config中预设的传感器
         self.actors["sensors"][agent] = []
-        for sensor, config in self.cfg["SENSOR_CONFIG"].items():
+        for sensor, config in self.config["SENSOR_CONFIG"].items():
             sensor_bp = self.world.get_blueprint_library().find(config["BLUEPRINT"])
             for attr, val in config["ATTRIBUTE"].items():
                 sensor_bp.set_attribute(attr, str(val))
-            trans_cfg = config["TRANSFORM"]
-            carla_transform = config_transform_to_carla_transform(trans_cfg)
+            config_transform = config["TRANSFORM"]
+            carla_transform = config_transform_to_carla_transform(config_transform)
             sensor = self.world.spawn_actor(sensor_bp, carla_transform, attach_to=agent)
             self.actors["sensors"][agent].append(sensor)
         self.world.tick()
@@ -152,12 +154,12 @@ class SimulationScene:
         spectator = self.world.get_spectator()
 
         # agent(放置传感器的车辆)位姿「相对世界坐标系」
-        agent_trans_cfg = self.cfg["AGENT_CONFIG"]["TRANSFORM"]
-        agent_transform = config_transform_to_carla_transform(agent_trans_cfg)
+        agent_transform_config = self.config["AGENT_CONFIG"]["TRANSFORM"]
+        agent_transform = config_transform_to_carla_transform(agent_transform_config)
 
         # RGB相机位姿「相对agent坐标系」
-        rgb_trans_cfg = self.cfg["SENSOR_CONFIG"]["RGB"]["TRANSFORM"]
-        rgb_transform = config_transform_to_carla_transform(rgb_trans_cfg)
+        rgb_transform_config = self.config["SENSOR_CONFIG"]["RGB"]["TRANSFORM"]
+        rgb_transform = config_transform_to_carla_transform(rgb_transform_config)
 
         # spectator位姿「相对世界坐标系」
         spectator_location = agent_transform.location + rgb_transform.location
@@ -180,3 +182,33 @@ class SimulationScene:
                 sensor.destroy()
             agent.destroy()
         self.client.apply_batch_sync(batch)
+
+    # 获取传感器信息
+    def get_sensor_data(self):
+        for agent, sensors in self.actors["sensors"].items():
+            self.data["sensor_data"][agent] = []
+            for sensor in sensors:
+                q = queue.Queue()
+                self.data["sensor_data"][agent].append(q)
+                sensor.listen(q.put)
+
+    def tick(self):
+        ret = {"environment_objects": None, "actors": None, "agents_data": {}}
+        self.frame = self.world.tick()
+
+        ret["environment_objects"] = self.world.get_environment_objects(carla.CityObjectLabel.Any)
+        ret["actors"] = self.world.get_actors()
+        image_width = self.config["SENSOR_CONFIG"]["RGB"]["ATTRIBUTE"]["image_size_x"]
+        image_height = self.config["SENSOR_CONFIG"]["RGB"]["ATTRIBUTE"]["image_size_y"]
+        for agent, dataQue in self.data["sensor_data"].items():
+            data = [self._retrieve_data(q) for q in dataQue]
+            assert all(x.frame == self.frame for x in data)
+            ret["agents_data"][agent] = {}
+            ret["agents_data"][agent]["sensor_data"] = data
+            ret["agents_data"][agent]["intrinsic"] = camera_intrinsic(image_width, image_height)
+            ret["agents_data"][agent]["extrinsic"] = np.mat(
+                self.actors["sensors"][agent][0].get_transform().get_matrix())
+            ret["agents_data"][agent]["location"] = self.actors["sensors"][agent][0].get_transform()
+
+        filter_by_distance(ret, self.config["FILTER_CONFIG"]["PRELIMINARY_FILTER_DISTANCE"])
+        return ret
