@@ -3,7 +3,7 @@ import random
 import logging
 import queue
 import numpy as np
-from utils import config_transform_to_carla_transform, camera_intrinsic
+from utils import config_transform_to_carla_transform, set_camera_intrinsic, filter_by_distance
 
 
 class SimulationScene:
@@ -183,8 +183,8 @@ class SimulationScene:
             agent.destroy()
         self.client.apply_batch_sync(batch)
 
-    # 获取传感器信息
-    def get_sensor_data(self):
+    # 监听传感器信息
+    def listen_sensor_data(self):
         for agent, sensors in self.actors["sensors"].items():
             self.data["sensor_data"][agent] = []
             for sensor in sensors:
@@ -192,23 +192,41 @@ class SimulationScene:
                 self.data["sensor_data"][agent].append(q)
                 sensor.listen(q.put)
 
-    def tick(self):
+    # 检查并获取传感器数据
+    def retrieve_data(self, q):
+        while True:
+            data = q.get()
+            # 检查传感器数据与场景是否处于同一帧
+            if data.frame == self.frame:
+                return data
+
+    def record_tick(self):
         ret = {"environment_objects": None, "actors": None, "agents_data": {}}
         self.frame = self.world.tick()
 
         ret["environment_objects"] = self.world.get_environment_objects(carla.CityObjectLabel.Any)
         ret["actors"] = self.world.get_actors()
+
+        # 生成RGB图像分辨率
         image_width = self.config["SENSOR_CONFIG"]["RGB"]["ATTRIBUTE"]["image_size_x"]
         image_height = self.config["SENSOR_CONFIG"]["RGB"]["ATTRIBUTE"]["image_size_y"]
+
         for agent, dataQue in self.data["sensor_data"].items():
-            data = [self._retrieve_data(q) for q in dataQue]
+
+            data = [self.retrieve_data(q) for q in dataQue]
             assert all(x.frame == self.frame for x in data)
             ret["agents_data"][agent] = {}
             ret["agents_data"][agent]["sensor_data"] = data
-            ret["agents_data"][agent]["intrinsic"] = camera_intrinsic(image_width, image_height)
+            # 设置传感器内参（仅相机有内参）
+            ret["agents_data"][agent]["intrinsic"] = set_camera_intrinsic(image_width, image_height)
+            # 设置传感器外参
             ret["agents_data"][agent]["extrinsic"] = np.mat(
                 self.actors["sensors"][agent][0].get_transform().get_matrix())
+            # 设置传感器的carla位姿
             ret["agents_data"][agent]["location"] = self.actors["sensors"][agent][0].get_transform()
 
+        # 根据预设距离对场景中的物体进行过滤
         filter_by_distance(ret, self.config["FILTER_CONFIG"]["PRELIMINARY_FILTER_DISTANCE"])
         return ret
+
+
