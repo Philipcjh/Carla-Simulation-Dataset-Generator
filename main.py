@@ -1,10 +1,11 @@
 from utils import yaml_to_config
 from SimulationScene import SimulationScene
-
+from DatasetSave import DatasetSave
 
 def main():
     config = yaml_to_config("configs.yaml")
     scene = SimulationScene(config)
+    dataset_save = DatasetSave(config)
     try:
         # 开启同步模式
         scene.set_synchrony()
@@ -27,7 +28,9 @@ def main():
         while True:
             if frame % STEP == 0:
                 # 记录帧
-                data = scene.record_tick()
+                dataset = scene.record_tick()
+                dataset_save.save_training_files(dataset)
+
             else:
                 # 运行帧
                 scene.world.tick()

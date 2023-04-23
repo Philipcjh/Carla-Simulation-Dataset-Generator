@@ -76,85 +76,10 @@ def object_filter_by_distance(data, distance):
     actors = data["actors"]
     for agent, _ in data["agents_data"].items():
         data["environment_objects"] = [obj for obj in environment_objects if
-                                       get_distance(obj.transform.location, agent.get_location()) < distance]
+                                       agent.get_location().distance(obj.transform.location) < distance]
         data["actors"] = [act for act in actors if
-                          get_distance(act.get_location(), agent.get_location()) < distance]
+                          agent.get_location().distance(act.get_location()) < distance]
     return data
-
-
-def get_distance(location1, location2):
-    """
-        计算carla中两个位置之间的欧式距离（xy平面上）
-
-        参数：
-            location1：CARLA中的位置1
-            location2：CARLA中的位置2
-
-        返回：
-            distance：两个位置之间的欧式距离
-    """
-    return math.sqrt(pow(location1.x - location2.x, 2) + pow(location1.y - location2.y, 2))
-
-
-def spawn_datasets(data):
-    """
-        处理传感器原始数据，生成KITTI数据集(RGB图像，激光雷达点云，KITTI标签等)
-
-        参数：
-            data：CARLA传感器相关数据（原始数据，内参，外参等）
-
-        返回：
-            datasets：处理后的数据（RGB图像，激光雷达点云，KITTI标签等）
-    """
-    environment_objects = data["environment_objects"]
-    environment_objects = [x for x in environment_objects if x.type == "vehicle"]
-    agents_data = data["agents_data"]
-    actors = data["actors"]
-    actors = [x for x in actors if x.type_id.find("vehicle") != -1 or x.type_id.find("walker") != -1]
-    for agent, dataDict in agents_data.items():
-        intrinsic = dataDict["intrinsic"]
-        extrinsic = dataDict["extrinsic"]
-        sensors_data = dataDict["sensor_data"]
-        sensor_location = dataDict["location"]
-        kitti_datapoints = []
-        carla_datapoints = []
-        lidar_datapoints = []
-        rgb_image = raw_image_to_rgb_array(sensors_data[0])
-        image = rgb_image.copy()
-        image_lidar = rgb_image.copy()
-        depth_data = sensors_data[1]
-        semantic_lidar = np.frombuffer(sensors_data[3].raw_data, dtype=np.dtype('f4,f4, f4, f4, i4, i4'))
-
-        data["agents_data"][agent]["visible_environment_objects"] = []
-        for obj in environment_objects:
-            kitti_datapoint, carla_datapoint = is_visible_by_bbox(agent, obj, image, depth_data, intrinsic, extrinsic)
-            # is_visible_by_lidar_bbox(agent, obj, image_lidar, semantic_lidar, intrinsic, extrinsic)
-            if kitti_datapoint is not None:
-                data["agents_data"][agent]["visible_environment_objects"].append(obj)
-                kitti_datapoints.append(kitti_datapoint)
-                carla_datapoints.append(carla_datapoint)
-
-        data["agents_data"][agent]["visible_actors"] = []
-
-        for act in actors:
-            kitti_datapoint, carla_datapoint = is_visible_by_bbox(agent, act, image, depth_data, intrinsic, extrinsic)
-            # is_visible_by_lidar_bbox(agent, act, image_lidar, semantic_lidar, intrinsic, extrinsic)
-            if kitti_datapoint is not None:
-                data["agents_data"][agent]["visible_actors"].append(act)
-                kitti_datapoints.append(kitti_datapoint)
-                carla_datapoints.append(carla_datapoint)
-
-            lidar_datapoint = is_visible_in_lidar(agent, act, semantic_lidar, extrinsic, sensor_location)
-            if lidar_datapoint is not None:
-                print(lidar_datapoint)
-                lidar_datapoints.append(lidar_datapoint)
-
-        data["agents_data"][agent]["rgb_image"] = image
-        data["agents_data"][agent]["lidar_image"] = image_lidar
-        data["agents_data"][agent]["kitti_datapoints"] = kitti_datapoints
-        data["agents_data"][agent]["carla_datapoints"] = carla_datapoints
-        data["agents_data"][agent]["lidar_datapoints"] = lidar_datapoints
-    return datasets
 
 
 def raw_image_to_rgb_array(image):
@@ -177,3 +102,18 @@ def raw_image_to_rgb_array(image):
     # 倒序
     array = array[:, :, ::-1]
     return array
+
+
+def depth_image_to_array(image):
+    """
+        将carla获取的raw depth_image转换成深度图
+    """
+    array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
+    array = np.reshape(array, (image.height, image.width, 4))  # RGBA format
+    array = array[:, :, :3]  # Take only RGB
+    array = array[:, :, ::-1]  # BGR
+    array = array.astype(np.float32)  # 2ms
+    gray_depth = ((array[:, :, 0] + array[:, :, 1] * 256.0 + array[:, :, 2] * 256.0 * 256.0) / (
+            (256.0 * 256.0 * 256.0) - 1))  # 2.5ms
+    gray_depth = 1000 * gray_depth
+    return gray_depth

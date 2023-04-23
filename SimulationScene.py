@@ -4,6 +4,7 @@ import logging
 import queue
 import numpy as np
 from utils import config_transform_to_carla_transform, set_camera_intrinsic, object_filter_by_distance
+from label import spawn_dataset
 
 
 class SimulationScene:
@@ -233,7 +234,6 @@ class SimulationScene:
                 data：CARLA传感器相关数据（原始数据，内参，外参等）
         """
         data = {"environment_objects": None, "actors": None, "agents_data": {}}
-        datasets = {"agents_data": {}}
         self.frame = self.world.tick()
 
         data["environment_objects"] = self.world.get_environment_objects(carla.CityObjectLabel.Any)
@@ -247,20 +247,21 @@ class SimulationScene:
             original_data = [self.retrieve_data(q) for q in dataQue]
             assert all(x.frame == self.frame for x in original_data)
             data["agents_data"][agent] = {}
-            data["agents_data"][agent]["sensor_data"] = data
+            data["agents_data"][agent]["sensor_data"] = original_data
             # 设置传感器内参（仅相机有内参）
             data["agents_data"][agent]["intrinsic"] = set_camera_intrinsic(image_width, image_height)
             # 设置传感器外参
             data["agents_data"][agent]["extrinsic"] = np.mat(
                 self.actors["sensors"][agent][0].get_transform().get_matrix())
             # 设置传感器的carla位姿
-            data["agents_data"][agent]["location"] = self.actors["sensors"][agent][0].get_transform()
-
-            datasets["agents_data"] = {}
+            data["agents_data"][agent]["transform"] = self.actors["sensors"][agent][0].get_transform()
+            # 设置传感器的种类
+            data["agents_data"][agent]["type"] = agent
 
         # 根据预设距离对场景中的物体进行过滤
         data = object_filter_by_distance(data, self.config["FILTER_CONFIG"]["PRELIMINARY_FILTER_DISTANCE"])
 
-        return datasets
+        dataset = spawn_dataset(data)
 
+        return dataset
 
