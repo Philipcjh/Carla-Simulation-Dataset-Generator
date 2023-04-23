@@ -1,6 +1,8 @@
 from utils import yaml_to_config
 from SimulationScene import SimulationScene
 from DatasetSave import DatasetSave
+import time
+
 
 def main():
     config = yaml_to_config("configs.yaml")
@@ -28,11 +30,18 @@ def main():
         while True:
             if frame % STEP == 0:
                 # 记录帧
+                print("frame:%d" % frame)
+                print("开始记录...")
+                time_start = time.time()
                 dataset = scene.record_tick()
                 dataset_save.save_training_files(dataset)
-
+                time_end = time.time()
+                print("记录完成！")
+                print("记录使用时间为%4fs" % (time_end - time_start))
+                print("****************************")
             else:
                 # 运行帧
+                # print("场景运行中，不做记录")
                 scene.world.tick()
 
             frame += 1

@@ -1,15 +1,15 @@
-import numpy as np
 import carla
 import math
-from numpy.linalg import inv
 from utils import raw_image_to_rgb_array, yaml_to_config, depth_image_to_array
 from data_descripter import KittiDescriptor
 from visual_utils import point_in_canvas, draw_2d_bounding_box, draw_3d_bounding_box
+from transform_utils import *
 
 config = yaml_to_config("configs.yaml")
 MAX_RENDER_DEPTH_IN_METERS = config["FILTER_CONFIG"]["MAX_RENDER_DEPTH_IN_METERS"]
 MIN_VISIBLE_VERTICES_FOR_RENDER = config["FILTER_CONFIG"]["MIN_VISIBLE_VERTICES_FOR_RENDER"]
 MAX_OUT_VERTICES_FOR_RENDER = config["FILTER_CONFIG"]["MAX_OUT_VERTICES_FOR_RENDER"]
+MIN_VISIBLE_NUM_FOR_POINT_CLOUDS = config["FILTER_CONFIG"]["MIN_VISIBLE_NUM_FOR_POINT_CLOUDS"]
 WINDOW_WIDTH = config["SENSOR_CONFIG"]["DEPTH_RGB"]["ATTRIBUTE"]["image_size_x"]
 WINDOW_HEIGHT = config["SENSOR_CONFIG"]["DEPTH_RGB"]["ATTRIBUTE"]["image_size_y"]
 
@@ -44,10 +44,11 @@ def spawn_dataset(data):
 
         rgb_image = raw_image_to_rgb_array(sensors_data[0])
         image = rgb_image.copy()
-        # image_lidar = rgb_image.copy()
-        depth_data = depth_image_to_array(sensors_data[1])
-        # semantic_lidar = np.frombuffer(sensors_data[3].raw_data, dtype=np.dtype('f4,f4, f4, f4, i4, i4'))
 
+        depth_data = depth_image_to_array(sensors_data[1])
+        semantic_lidar = np.frombuffer(sensors_data[3].raw_data, dtype=np.dtype('f4,f4, f4, f4, i4, i4'))
+
+        # 对环境中的目标物体生成标签
         data["agents_data"][agent]["visible_environment_objects"] = []
         for obj in environment_objects:
             image_label_kitti = is_visible_in_camera(agent, obj, image, depth_data, intrinsic, extrinsic)
@@ -55,18 +56,23 @@ def spawn_dataset(data):
                 data["agents_data"][agent]["visible_environment_objects"].append(obj)
                 image_labels_kitti.append(image_label_kitti)
 
+            pc_label_kitti = is_visible_in_lidar(agent, act, semantic_lidar, extrinsic)
+            if pc_label_kitti is not None:
+                print(pc_label_kitti)
+                pc_labels_kitti.append(pc_label_kitti)
+
+        # 对actors中的目标物体生成标签
         data["agents_data"][agent]["visible_actors"] = []
         for act in actors:
             image_label_kitti = is_visible_in_camera(agent, act, image, depth_data, intrinsic, extrinsic)
-            # is_visible_by_lidar_bbox(agent, act, image_lidar, semantic_lidar, intrinsic, extrinsic)
             if image_label_kitti is not None:
                 data["agents_data"][agent]["visible_actors"].append(act)
                 image_labels_kitti.append(image_label_kitti)
 
-            # lidar_datapoint = is_visible_in_lidar(agent, act, semantic_lidar, extrinsic, sensor_transform)
-            # if lidar_datapoint is not None:
-            #     print(lidar_datapoint)
-            #     pointcloud_labels_kitti.append(lidar_datapoint)
+            pc_label_kitti = is_visible_in_lidar(agent, act, semantic_lidar, extrinsic)
+            if pc_label_kitti is not None:
+                print(pc_label_kitti)
+                pc_labels_kitti.append(pc_label_kitti)
 
         data["agents_data"][agent]["rgb_image"] = rgb_image
         data["agents_data"][agent]["bbox_img"] = image
@@ -80,25 +86,31 @@ def is_visible_in_camera(agent, obj, rgb_image, depth_data, intrinsic, extrinsic
         筛选出在摄像头中可见的目标物并生成标签
 
         参数：
-            agent：CARLA传感器相关数据（原始数据，内参，外参等）
+            agent：CARLA中agent
+            obj：CARLA内物体
+            rgb_image：RGB图像
+            depth_data：深度信息
+            intrinsic：相机内参
+            extrinsic：相机外参
 
         返回：
-            dataset：处理后的数据（RGB图像，激光雷达点云，KITTI标签等）
+            kitti_label：RGB图像的KITTI标签
     """
     obj_transform = obj.transform if isinstance(obj, carla.EnvironmentObject) else obj.get_transform()
     obj_bbox = obj.bounding_box
-    if isinstance(obj, carla.EnvironmentObject):
-        vertices_in_image = get_2d_vertices_in_image(intrinsic, extrinsic, obj_bbox, obj_transform, 0)
-    else:
-        vertices_in_image = get_2d_vertices_in_image(intrinsic, extrinsic, obj_bbox, obj_transform, 1)
 
-    num_visible_vertices, num_vertices_outside_camera = calculate_occlusion_stats(vertices_in_image, depth_data)
+    if isinstance(obj, carla.EnvironmentObject):
+        vertices_in_image = get_vertices_pixel(intrinsic, extrinsic, obj_bbox, obj_transform, 0)
+    else:
+        vertices_in_image = get_vertices_pixel(intrinsic, extrinsic, obj_bbox, obj_transform, 1)
+
+    num_visible_vertices, num_vertices_outside_camera = get_occlusion_stats(vertices_in_image, depth_data)
     if num_visible_vertices >= MIN_VISIBLE_VERTICES_FOR_RENDER and \
             num_vertices_outside_camera < MAX_OUT_VERTICES_FOR_RENDER:
         obj_tp = obj_type(obj)
         rotation_y = get_relative_rotation_yaw(agent.get_transform().rotation, obj_transform.rotation) % math.pi
-        midpoint = midpoint_from_agent_location(obj_transform.location, extrinsic)
-        bbox_2d = calc_projected_2d_bbox(vertices_in_image)
+        midpoint = midpoint_from_world_to_camera(obj_transform.location, extrinsic)
+        bbox_2d = get_2d_bbox_in_pixel(vertices_in_image)
         ext = obj.bounding_box.extent
         truncated = num_vertices_outside_camera / 8
         if num_visible_vertices >= 6:
@@ -108,7 +120,6 @@ def is_visible_in_camera(agent, obj, rgb_image, depth_data, intrinsic, extrinsic
         else:
             occluded = 2
 
-        # draw bounding box
         # draw_3d_bounding_box(rgb_image, vertices_pos2d)
         bbox_2d = draw_2d_bounding_box(rgb_image, bbox_2d)
 
@@ -125,34 +136,84 @@ def is_visible_in_camera(agent, obj, rgb_image, depth_data, intrinsic, extrinsic
     return None
 
 
-def get_2d_vertices_in_image(intrinsic_mat, extrinsic_mat, obj_bbox, obj_transform, obj_tp):
+def is_visible_in_lidar(agent, obj, semantic_lidar, extrinsic):
+    """
+        筛选出在激光雷达中可见的目标物并生成标签
+
+        参数：
+            agent：CARLA中agent
+            obj：CARLA内物体
+            semantic_lidar：语义激光雷达信息（生成的xyz与激光雷达一样，增加了点云所属物体的种类与id）
+            extrinsic：激光雷达外参
+
+        返回：
+            kitti_label：RGB图像的KITTI标签
+    """
+    pc_num = 0
+
+    for point in semantic_lidar:
+        # 统计属于目标物体的点云数量
+        if point[4] == obj.id:
+            pc_num += 1
+
+        if pc_num >= MIN_VISIBLE_NUM_FOR_POINT_CLOUDS:
+            obj_tp = obj_type(obj)
+            obj_transform = obj.transform if isinstance(obj, carla.EnvironmentObject) else obj.get_transform()
+            # 将原点设置在激光雷达所在的xy，z=0处
+            midpoint = np.array([
+                [obj_transform.location.x - extrinsic[0, 3]],  # [[X,
+                [obj_transform.location.y - extrinsic[1, 3]],  # Y,
+                [obj_transform.location.z],  # Z,
+                [1.0]  # 1.0]]
+            ])
+            rotation_y = math.radians(-obj_transform.rotation.yaw) % math.pi
+            ext = obj.bounding_box.extent
+
+            point_cloud_label = KittiDescriptor()
+            point_cloud_label.set_truncated(0)
+            point_cloud_label.set_occlusion(0)
+            point_cloud_label.set_bbox([0, 0, 0, 0])
+            point_cloud_label.set_3d_object_dimensions(ext)
+            point_cloud_label.set_type(obj_tp)
+            point_cloud_label.set_lidar_object_location(midpoint)
+            point_cloud_label.set_rotation_y(rotation_y)
+            return point_cloud_label
+    return None
+
+
+def get_vertices_pixel(intrinsic_mat, extrinsic_mat, obj_bbox, obj_transform, obj_tp):
     """
         将物体3d bounding box的顶点坐标投影到像素坐标系上
 
         参数：
-            agent：CARLA传感器相关数据（原始数据，内参，外参等）
+            intrinsic_mat：相机内参矩阵
+            extrinsic_mat：相机外参矩阵
+            obj_bbox：物体bounding box
+            obj_transform：物体在CARLA中的位姿
+            obj_tp：物体的种类
 
         返回：
-            vertices_in_image：8个顶点在像素坐标系下的坐标
+            vertices_pixel：3d bounding box的8个顶点在像素坐标系下的坐标
     """
-    bbox = extension_to_vertices(obj_bbox)
+    vertices = extension_to_vertices(obj_bbox)
+
     # actors
     if obj_tp == 1:
         bbox_transform = carla.Transform(obj_bbox.location, obj_bbox.rotation)
-        bbox = transform_points(bbox_transform, bbox)
+        vertices_local = transform_points(bbox_transform, vertices)
     # 环境物体
     else:
         box_location = carla.Location(obj_bbox.location.x - obj_transform.location.x,
                                       obj_bbox.location.y - obj_transform.location.y,
                                       obj_bbox.location.z - obj_transform.location.z)
-        box_rotation = obj_bbox.rotation
-        bbox_transform = carla.Transform(box_location, box_rotation)
-        bbox = transform_points(bbox_transform, bbox)
-    # 获取bbox在世界坐标系下的点的坐标
-    bbox = transform_points(obj_transform, bbox)
-    # 将世界坐标系下的bbox八个顶点转换到二维图片中
-    vertices_in_image = vertices_to_2d_coords(bbox, intrinsic_mat, extrinsic_mat)
-    return vertices_in_image
+        bbox_transform = carla.Transform(box_location, obj_bbox.rotation)
+        vertices_local = transform_points(bbox_transform, vertices)
+
+    # 获取3d bounding box在世界坐标系下八个顶点的坐标
+    vertices_world = transform_points(obj_transform, vertices_local)
+    # 将世界坐标系下的bbox八个顶点转换到像素坐标系中
+    vertices_pixel = transform_from_world_to_pixel(vertices_world, intrinsic_mat, extrinsic_mat)
+    return vertices_pixel
 
 
 def extension_to_vertices(obj_bbox):
@@ -163,10 +224,9 @@ def extension_to_vertices(obj_bbox):
             obj_bbox：CARLA物体的bounding box
 
         返回：
-            vertices：车辆3D bounding box的八个顶点坐标(以车辆中心为原点的坐标系）[3 × 8 矩阵]
+            vertices：车辆3D bounding box的八个顶点齐次坐标(以车辆中心为原点的坐标系）[4 × 8 矩阵]
     """
     ext = obj_bbox.extent
-    # 8 × 3
     vertices = np.array([
         [ext.x, ext.y, ext.z],  # Top left front
         [- ext.x, ext.y, ext.z],  # Top left back
@@ -177,16 +237,27 @@ def extension_to_vertices(obj_bbox):
         [ext.x, - ext.y, - ext.z],  # Bottom right front
         [- ext.x, - ext.y, - ext.z]  # Bottom right back
     ])
-    # vertices = vertices.transpose()
+    vertices = vertices.transpose()
+    vertices = np.append(vertices, np.ones((1, vertices.shape[1])), axis=0)
     return vertices
 
 
-def calculate_occlusion_stats(vertices_pos2d, depth_image):
-    """ 作用：筛选bbox八个顶点中实际可见的点 """
+def get_occlusion_stats(vertices, depth_image):
+    """
+        筛选3D bounding box八个顶点在图片中实际可见的点
+
+        参数：
+            vertices：物体的3D bounding box八个顶点的像素坐标与深度
+            depth_image：深度图片中的深度信息
+
+        返回：
+            num_visible_vertices：在图片中可见的bounding box顶点
+            num_vertices_outside_camera：在图片中不可见的bounding box顶点
+    """
     num_visible_vertices = 0
     num_vertices_outside_camera = 0
 
-    for y_2d, x_2d, vertex_depth in vertices_pos2d:
+    for y_2d, x_2d, vertex_depth in vertices:
         # 点在可见范围中，并且没有超出图片范围
         if MAX_RENDER_DEPTH_IN_METERS > vertex_depth > 0 and point_in_canvas((y_2d, x_2d)):
             is_occluded = point_is_occluded(
@@ -199,6 +270,17 @@ def calculate_occlusion_stats(vertices_pos2d, depth_image):
 
 
 def point_is_occluded(point, vertex_depth, depth_image):
+    """
+        判断该点是否被遮挡
+
+        参数：
+            point：点的像素坐标
+            vertex_depth：该点的实际深度
+            depth_image：深度图片中的深度信息
+
+        返回：
+            bool：是否被遮挡。若是，则返回1;反之则返回0
+    """
     y, x = map(int, point)
     from itertools import product
     neighbours = product((1, -1), repeat=2)
@@ -212,95 +294,6 @@ def point_is_occluded(point, vertex_depth, depth_image):
                 is_occluded.append(False)
     # 当四个邻居点都大于深度图像值时，点被遮挡。返回true
     return all(is_occluded)
-
-
-def midpoint_from_agent_location(location, extrinsic_mat):
-    """ 将agent在世界坐标系中的中心点转换到相机坐标系下 """
-    midpoint_vector = np.array([
-        [location.x],  # [[X,
-        [location.y],  # Y,
-        [location.z],  # Z,
-        [1.0]  # 1.0]]
-    ])
-    transformed_3d_midpoint = proj_to_camera(midpoint_vector, extrinsic_mat)
-    return transformed_3d_midpoint
-
-
-def proj_to_camera(pos_vector, extrinsic_mat):
-    """ 作用：将点的world坐标转换到相机坐标系中 """
-    # inv求逆矩阵
-    transformed_3d_pos = np.dot(inv(extrinsic_mat), pos_vector)
-    return transformed_3d_pos
-
-
-def transform_points(transform, points):
-    """ 作用：将三维点坐标转换到指定坐标系下 """
-    # 转置
-    points = points.transpose()
-    # [[X0..,Xn],[Y0..,Yn],[Z0..,Zn],[1,..1]]  (4,n)
-    points = np.append(points, np.ones((1, points.shape[1])), axis=0)
-    # transform.get_matrix() 获取当前坐标系向相对坐标系的旋转矩阵
-    points = np.mat(transform.get_matrix()) * points
-    # 返回前三行
-    return points[0:3].transpose()
-
-
-def calc_projected_2d_bbox(vertices_pos2d):
-    """ 根据八个顶点的图片坐标，计算二维bbox的左上和右下的坐标值 """
-    legal_pos2d = list(filter(lambda x: x is not None, vertices_pos2d))
-    y_coords, x_coords = [int(x[0][0]) for x in legal_pos2d], [
-        int(x[1][0]) for x in legal_pos2d]
-    min_x, max_x = min(x_coords), max(x_coords)
-    min_y, max_y = min(y_coords), max(y_coords)
-    return [min_x, min_y, max_x, max_y]
-
-
-def vertices_to_2d_coords(bbox, intrinsic_mat, extrinsic_mat):
-    """将bbox在世界坐标系中的点投影到该相机获取二维图片的坐标和点的深度"""
-    vertices_pos2d = []
-    for vertex in bbox:
-        # 获取点在world坐标系中的向量
-        pos_vector = vertex_to_world_vector(vertex)
-        # 将点的world坐标转换到相机坐标系中
-        transformed_3d_pos = proj_to_camera(pos_vector, extrinsic_mat)
-        # 将点的相机坐标转换为二维图片的坐标
-        pos2d = proj_to_2d(transformed_3d_pos, intrinsic_mat)
-        # 点实际的深度
-        vertex_depth = pos2d[2]
-        # 点在图片中的坐标
-        x_2d, y_2d = pos2d[0], pos2d[1]
-        vertices_pos2d.append((y_2d, x_2d, vertex_depth))
-    return vertices_pos2d
-
-
-def vertex_to_world_vector(vertex):
-    """ 以carla世界向量（X，Y，Z，1）返回顶点的坐标 （4,1）"""
-    return np.array([
-        [vertex[0, 0]],  # [[X,
-        [vertex[0, 1]],  # Y,
-        [vertex[0, 2]],  # Z,
-        [1.0]  # 1.0]]
-    ])
-
-
-def proj_to_camera(vector, extrinsic_mat):
-    """ 作用：将点的world坐标转换到相机坐标系中 """
-    # inv求逆矩阵
-    transformed_3d_pos = np.dot(inv(extrinsic_mat), vector)
-    return transformed_3d_pos
-
-
-def proj_to_2d(camera_pos_vector, intrinsic_mat):
-    """将相机坐标系下的点的3d坐标投影到图片上"""
-    cords_x_y_z = camera_pos_vector[:3, :]
-    cords_y_minus_z_x = np.concatenate([cords_x_y_z[1, :], -cords_x_y_z[2, :], cords_x_y_z[0, :]])
-    pos2d = np.dot(intrinsic_mat, cords_y_minus_z_x)
-    # normalize the 2D points
-    if abs(pos2d[2]) < 1e-6:
-        pos2d = np.array([0, 0, 0])
-    else:
-        pos2d = np.array([pos2d[0] / pos2d[2], pos2d[1] / pos2d[2], pos2d[2]])
-    return pos2d
 
 
 def get_relative_rotation_yaw(agent_rotation, obj_rotation):
