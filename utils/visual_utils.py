@@ -1,4 +1,4 @@
-from utils import yaml_to_config
+from utils.utils import yaml_to_config
 
 config = yaml_to_config("configs.yaml")
 WINDOW_WIDTH = config["SENSOR_CONFIG"]["DEPTH_RGB"]["ATTRIBUTE"]["image_size_x"]

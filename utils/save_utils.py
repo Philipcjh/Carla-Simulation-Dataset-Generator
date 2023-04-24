@@ -1,10 +1,8 @@
 import numpy as np
-from numpy.linalg import inv
 from PIL import Image
 import os
 import logging
 import math
-
 import carla
 
 
