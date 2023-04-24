@@ -1,7 +1,7 @@
 import carla
 import math
 from utils import raw_image_to_rgb_array, yaml_to_config, depth_image_to_array
-from data_descripter import KittiDescriptor
+from KittiDescriptor import KittiDescriptor
 from visual_utils import *
 from transform_utils import *
 

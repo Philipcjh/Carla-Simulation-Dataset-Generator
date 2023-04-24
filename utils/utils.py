@@ -1,4 +1,3 @@
-import sys
 import yaml
 import carla
 import math
