@@ -3,8 +3,8 @@ import random
 import logging
 import queue
 import numpy as np
-from utils import config_transform_to_carla_transform, set_camera_intrinsic, object_filter_by_distance
-from label_utils import spawn_dataset
+from utils.utils import config_transform_to_carla_transform, set_camera_intrinsic, object_filter_by_distance
+from utils.label_utils import spawn_dataset
 
 
 class SimulationScene:

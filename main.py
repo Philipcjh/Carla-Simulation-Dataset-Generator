@@ -1,4 +1,4 @@
-from utils import yaml_to_config
+from utils.utils import yaml_to_config
 from SimulationScene import SimulationScene
 from DatasetSave import DatasetSave
 import time
