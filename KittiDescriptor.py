@@ -88,7 +88,7 @@ class KittiDescriptor:
 
     def set_3d_object_location(self, obj_location):
         """
-            将carla相机内目标中心点坐标转换为kitti格式的中心点坐标
+            将carla相机坐标系下目标中心点坐标转换为kitti数据集相机坐标系的中心点坐标
             carla x y z
             kitti z x -y
             z
