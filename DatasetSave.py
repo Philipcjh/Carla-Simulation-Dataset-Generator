@@ -100,10 +100,10 @@ class DatasetSave:
 
             save_calibration_matrices([camera_transform, lidar_transform], calib_filename, dt["intrinsic"])
             save_image_data(img_filename, dt["sensor_data"][0])
-            save_label_data(img_label_filename, dt["image_labels_kitti"])
+            save_kitti_label_data(img_label_filename, dt["image_labels_kitti"])
             save_bbox_image_data(bbox_img_filename, dt["bbox_img"])
 
             save_lidar_data(lidar_filename, dt["sensor_data"][2], extrinsic)
-            save_label_data(lidar_label_filename, dt["pc_labels_kitti"])
+            save_kitti_label_data(lidar_label_filename, dt["pc_labels_kitti"])
 
         self.captured_frame_no += 1

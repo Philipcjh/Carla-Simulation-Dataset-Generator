@@ -1,8 +1,3 @@
-"""
-This file contains all the methods responsible for saving the generated data in the correct output format.
-
-"""
-
 import numpy as np
 from numpy.linalg import inv
 from PIL import Image
@@ -23,22 +18,39 @@ def save_ref_files(folder, index):
 
 
 def save_image_data(filename, image):
+    """
+        保存RGB图像
+
+        参数：
+            filename：保存文件的路径
+            image：CARLA原始图像数据
+    """
     logging.info("Wrote image data to %s", filename)
     image.save_to_disk(filename)
 
 
-def save_depth_image_data(filename, image):
-    image.save_to_disk(filename, carla.ColorConverter.Depth)
+def save_depth_image_data(filename, depth_image):
+    """
+        保存深度图像
+
+        参数：
+            filename：保存文件的路径
+            depth_image：CARLA原始深度图像数据
+    """
+    logging.info("Wrote depth image data to %s", filename)
+    depth_image.save_to_disk(filename, carla.ColorConverter.Depth)
 
 
 def save_bbox_image_data(filename, image):
-    im = Image.fromarray(image)
-    im.save(filename)
+    """
+        保存带有2d bounding box的RGB图像
 
-
-def save_semantic_lidar_data(filename, data):
-    sem_lidar = np.frombuffer(data.raw_data, dtype=np.dtype('f4,f4, f4, f4, i4, i4'))
-    np.savetxt(filename, sem_lidar, fmt="%.4f %.4f %.4f %.4f %d %d")
+        参数：
+            filename：保存文件的路径
+            image：带有2d bounding box的RGB图像数组
+    """
+    img = Image.fromarray(image)
+    img.save(filename)
 
 
 def save_lidar_data(filename, point_cloud, extrinsic, format="bin"):
@@ -71,13 +83,11 @@ def save_lidar_data(filename, point_cloud, extrinsic, format="bin"):
 
         lidar_array = [[point[0], point[1], point[2], 1.0] for point in point_cloud]
         lidar_array = np.dot(extrinsic, np.array(lidar_array).transpose())
+        # 减掉因将激光雷达为原点而导致的偏移量
         lidar_array[0, :] = lidar_array[0, :] - extrinsic[0, 3]
         lidar_array[1, :] = -(lidar_array[1, :] - extrinsic[1, 3])
         lidar_array = lidar_array.transpose().astype(np.float32)
 
-        # lidar_array = [[point[0], -point[1], point[2], 1.0]
-        #                for point in point_cloud]
-        # lidar_array = np.array(lidar_array).astype(np.float32)
         logging.debug("Lidar min/max of x: {} {}".format(
             lidar_array[:, 0].min(), lidar_array[:, 0].max()))
         logging.debug("Lidar min/max of y: {} {}".format(
@@ -87,7 +97,19 @@ def save_lidar_data(filename, point_cloud, extrinsic, format="bin"):
         lidar_array.tofile(filename)
 
 
-def save_label_data(filename, datapoints):
+def save_semantic_lidar_data(filename, data):
+    """
+        保存CARLA语义激光雷达数据
+
+        参数：
+            filename：保存文件的路径
+            data：CARLA语义激光雷达数据
+    """
+    sem_lidar = np.frombuffer(data.raw_data, dtype=np.dtype('f4,f4, f4, f4, i4, i4'))
+    np.savetxt(filename, sem_lidar, fmt="%.4f %.4f %.4f %.4f %d %d")
+
+
+def save_kitti_label_data(filename, datapoints):
     with open(filename, 'w') as f:
         out_str = "\n".join([str(point) for point in datapoints if point])
         f.write(out_str)
@@ -95,20 +117,23 @@ def save_label_data(filename, datapoints):
 
 
 def save_calibration_matrices(transform, filename, intrinsic_mat):
-    """ Saves the calibration matrices to a file.
+    """
+        保存传感器标定矩阵数据
+
+        参数：
+            transform：相机和激光雷达外参矩阵
+            filename：保存文件的路径
+            intrinsic_mat：RGB相机内参矩阵
+
         AVOD (and KITTI) refers to P as P=K*[R;t], so we will just store P.
-        The resulting file will contain:
+        保存的文件中包含:
         3x4    p0-p3      Camera P matrix. Contains extrinsic
                           and intrinsic parameters. (P=K*[R;t])
-        3x3    r0_rect    Rectification matrix, required to transform points
-                          from velodyne to camera coordinate frame.
-        3x4    tr_velodyne_to_cam    Used to transform from velodyne to cam
-                                     coordinate frame according to:
-                                     Point_Camera = P_cam * R0_rect *
-                                                    Tr_velo_to_cam *
-                                                    Point_Velodyne.
-        3x4    tr_imu_to_velo        Used to transform from imu to velodyne coordinate frame. This is not needed since we do not export
-                                     imu data.
+        3x3    r0_rect              相机畸变矩阵
+        3x4    tr_velodyne_to_cam   激光雷达坐标系到相机坐标系的变换矩阵
+                                    Point_Camera = P_cam * R0_rect * Tr_velo_to_cam * Point_Velodyne.
+
+        3x4    tr_imu_to_velo       IMU坐标系到激光雷达坐标系的变换矩阵（此处无IMU，故不输出）
     """
     # KITTI format demands that we flatten in row-major order
     ravel_mode = 'C'
@@ -158,8 +183,3 @@ def write_flat(file, name, arr):
     ravel_mode = 'C'
     file.write("{}: {}\n".format(name, ' '.join(
         map(str, arr.flatten(ravel_mode).squeeze()))))
-
-
-def save_rgb_image(filename, image):
-    im = Image.fromarray(image)
-    im.save(filename)
