@@ -1,30 +1,58 @@
-def draw_2d_bounding_box(array, bbox_2d):
-    min_x, min_y = set_point_in_canvas((bbox_2d[1], bbox_2d[0]))
-    max_x, max_y = set_point_in_canvas((bbox_2d[3], bbox_2d[2]))
-    # line
-    for y in range(min_y, max_y):
-        array[y, min_x] = (255, 0, 0)
+from utils import yaml_to_config
 
+config = yaml_to_config("configs.yaml")
+WINDOW_WIDTH = config["SENSOR_CONFIG"]["DEPTH_RGB"]["ATTRIBUTE"]["image_size_x"]
+WINDOW_HEIGHT = config["SENSOR_CONFIG"]["DEPTH_RGB"]["ATTRIBUTE"]["image_size_y"]
+
+
+def rectify_2d_bounding_box(bbox_2d):
+    """
+        对2d bounding box进行校正，将超出图片范围外的部分
+
+            参数：
+                bbox_2d：2d bounding box的左上和右下的像素坐标
+
+            返回：
+                bbox_2d_rectified：校正后的2d bounding box的左上和右下的像素坐标
+    """
+    min_x, min_y, max_x, max_y = bbox_2d
+    if point_in_canvas((min_y, min_x)) or point_in_canvas((max_y, max_x)):
+        min_x_rectified, min_y_rectified = set_point_in_canvas((min_x, min_y))
+        max_x_rectified, max_y_rectified = set_point_in_canvas((max_x, max_y))
+        bbox_2d_rectified = [min_x_rectified, min_y_rectified, max_x_rectified, max_y_rectified]
+        return bbox_2d_rectified
+    else:
+        return None
+
+
+def draw_2d_bounding_box(image, bbox_2d):
+    """
+        在图像中绘制2d bounding box
+
+            参数：
+                image：RGB图像
+                bbox_2d：2d bounding box的左上和右下的像素坐标
+
+    """
+    min_x, min_y, max_x, max_y = bbox_2d
+
+    # 将2d bounding box的四条边设置为红色
     for y in range(min_y, max_y):
-        array[y, max_x] = (255, 0, 0)
+        image[y, min_x] = (255, 0, 0)
+        image[y, max_x] = (255, 0, 0)
 
     for x in range(min_x, max_x):
-        array[max_y, int(x)] = (255, 0, 0)
+        image[max_y, int(x)] = (255, 0, 0)
+        image[min_y, int(x)] = (255, 0, 0)
 
-    for x in range(min_x, max_x):
-        array[min_y, int(x)] = (255, 0, 0)
-
-    # vertices
-    array[min_y, min_x] = (0, 255, 0)
-    array[min_y, max_x] = (0, 255, 0)
-    array[max_y, min_x] = (0, 255, 0)
-    array[max_y, max_x] = (0, 255, 0)
-
-    correct_bbox_2d = [min_x, min_y, max_x, max_y]
-    return correct_bbox_2d
+    # 将2d bounding box的四个顶点设置为绿色
+    image[min_y, min_x] = (0, 255, 0)
+    image[min_y, max_x] = (0, 255, 0)
+    image[max_y, min_x] = (0, 255, 0)
+    image[max_y, max_x] = (0, 255, 0)
 
 
-def draw_3d_bounding_box(array, vertices_pos2d):
+def draw_3d_bounding_box(image, vertices_pos2d):
     # Shows which verticies that are connected so that we can draw lines between them
     # The key of the dictionary is the index in the bbox array, and the corresponding value is a list of indices
     # referring to the same array.
@@ -51,12 +79,12 @@ def draw_3d_bounding_box(array, vertices_pos2d):
 
             for x, y in get_line(x1, y1, x2, y2):
                 if point_in_canvas((y, x)):
-                    array[int(y), int(x)] = (0, 0, 255)
+                    image[int(y), int(x)] = (0, 0, 255)
 
             if point_in_canvas((y1, x1)):
-                array[int(y1), int(x1)] = (255, 0, 255)
+                image[int(y1), int(x1)] = (255, 0, 255)
             if point_in_canvas((y2, x2)):
-                array[int(y2), int(x2)] = (255, 0, 255)
+                image[int(y2), int(x2)] = (255, 0, 255)
 
 
 def get_line(x1, y1, x2, y2):
@@ -95,18 +123,18 @@ def get_line(x1, y1, x2, y2):
     return points
 
 
-def set_point_in_canvas(pos):
-    x, y = pos[1], pos[0]
+def set_point_in_canvas(point):
+    x, y = point[0], point[1]
 
     if x < 0:
         x = 0
-    elif x >= 720:
-        x = 719
+    elif x >= WINDOW_WIDTH:
+        x = WINDOW_WIDTH - 1
 
     if y < 0:
         y = 0
-    elif y >= 360:
-        y = 359
+    elif y >= WINDOW_HEIGHT:
+        y = WINDOW_HEIGHT - 1
 
     return x, y
 
@@ -115,6 +143,6 @@ def point_in_canvas(pos):
     """
     如果点在图片内，返回true
     """
-    if (pos[0] >= 0) and (pos[0] < 360) and (pos[1] >= 0) and (pos[1] < 720):
+    if (pos[0] >= 0) and (pos[0] < WINDOW_HEIGHT) and (pos[1] >= 0) and (pos[1] < WINDOW_WIDTH):
         return True
     return False

@@ -2,7 +2,7 @@ import carla
 import math
 from utils import raw_image_to_rgb_array, yaml_to_config, depth_image_to_array
 from data_descripter import KittiDescriptor
-from visual_utils import point_in_canvas, draw_2d_bounding_box, draw_3d_bounding_box
+from visual_utils import *
 from transform_utils import *
 
 config = yaml_to_config("configs.yaml")
@@ -100,9 +100,9 @@ def is_visible_in_camera(agent, obj, rgb_image, depth_data, intrinsic, extrinsic
     obj_bbox = obj.bounding_box
 
     if isinstance(obj, carla.EnvironmentObject):
-        vertices_in_image = get_vertices_pixel(intrinsic, extrinsic, obj_bbox, obj_transform, 0)
+        vertices_pixel = get_vertices_pixel(intrinsic, extrinsic, obj_bbox, obj_transform, 0)
     else:
-        vertices_in_image = get_vertices_pixel(intrinsic, extrinsic, obj_bbox, obj_transform, 1)
+        vertices_pixel = get_vertices_pixel(intrinsic, extrinsic, obj_bbox, obj_transform, 1)
 
     num_visible_vertices, num_vertices_outside_camera = get_occlusion_stats(vertices_in_image, depth_data)
     if num_visible_vertices >= MIN_VISIBLE_VERTICES_FOR_RENDER and \
@@ -110,7 +110,7 @@ def is_visible_in_camera(agent, obj, rgb_image, depth_data, intrinsic, extrinsic
         obj_tp = obj_type(obj)
         rotation_y = get_relative_rotation_yaw(agent.get_transform().rotation, obj_transform.rotation) % math.pi
         midpoint = midpoint_from_world_to_camera(obj_transform.location, extrinsic)
-        bbox_2d = get_2d_bbox_in_pixel(vertices_in_image)
+        bbox_2d = get_2d_bbox_in_pixel(vertices_pixel)
         ext = obj.bounding_box.extent
         truncated = num_vertices_outside_camera / 8
         if num_visible_vertices >= 6:
@@ -121,7 +121,8 @@ def is_visible_in_camera(agent, obj, rgb_image, depth_data, intrinsic, extrinsic
             occluded = 2
 
         # draw_3d_bounding_box(rgb_image, vertices_pos2d)
-        bbox_2d = draw_2d_bounding_box(rgb_image, bbox_2d)
+        bbox_2d_rectified = rectify_2d_bounding_box(bbox_2d)
+        draw_2d_bounding_box(rgb_image, bbox_2d_rectified)
 
         kitti_label = KittiDescriptor()
         kitti_label.set_truncated(truncated)
@@ -179,67 +180,6 @@ def is_visible_in_lidar(agent, obj, semantic_lidar, extrinsic):
             point_cloud_label.set_rotation_y(rotation_y)
             return point_cloud_label
     return None
-
-
-def get_vertices_pixel(intrinsic_mat, extrinsic_mat, obj_bbox, obj_transform, obj_tp):
-    """
-        将物体3d bounding box的顶点坐标投影到像素坐标系上
-
-        参数：
-            intrinsic_mat：相机内参矩阵
-            extrinsic_mat：相机外参矩阵
-            obj_bbox：物体bounding box
-            obj_transform：物体在CARLA中的位姿
-            obj_tp：物体的种类
-
-        返回：
-            vertices_pixel：3d bounding box的8个顶点在像素坐标系下的坐标
-    """
-    vertices = extension_to_vertices(obj_bbox)
-
-    # actors
-    if obj_tp == 1:
-        bbox_transform = carla.Transform(obj_bbox.location, obj_bbox.rotation)
-        vertices_local = transform_points(bbox_transform, vertices)
-    # 环境物体
-    else:
-        box_location = carla.Location(obj_bbox.location.x - obj_transform.location.x,
-                                      obj_bbox.location.y - obj_transform.location.y,
-                                      obj_bbox.location.z - obj_transform.location.z)
-        bbox_transform = carla.Transform(box_location, obj_bbox.rotation)
-        vertices_local = transform_points(bbox_transform, vertices)
-
-    # 获取3d bounding box在世界坐标系下八个顶点的坐标
-    vertices_world = transform_points(obj_transform, vertices_local)
-    # 将世界坐标系下的bbox八个顶点转换到像素坐标系中
-    vertices_pixel = transform_from_world_to_pixel(vertices_world, intrinsic_mat, extrinsic_mat)
-    return vertices_pixel
-
-
-def extension_to_vertices(obj_bbox):
-    """
-        从CARLA物体的bounding box得到车辆3D bounding box的八个顶点坐标（以车辆中心为原点的坐标系）
-
-        参数：
-            obj_bbox：CARLA物体的bounding box
-
-        返回：
-            vertices：车辆3D bounding box的八个顶点齐次坐标(以车辆中心为原点的坐标系）[4 × 8 矩阵]
-    """
-    ext = obj_bbox.extent
-    vertices = np.array([
-        [ext.x, ext.y, ext.z],  # Top left front
-        [- ext.x, ext.y, ext.z],  # Top left back
-        [ext.x, - ext.y, ext.z],  # Top right front
-        [- ext.x, - ext.y, ext.z],  # Top right back
-        [ext.x, ext.y, - ext.z],  # Bottom left front
-        [- ext.x, ext.y, - ext.z],  # Bottom left back
-        [ext.x, - ext.y, - ext.z],  # Bottom right front
-        [- ext.x, - ext.y, - ext.z]  # Bottom right back
-    ])
-    vertices = vertices.transpose()
-    vertices = np.append(vertices, np.ones((1, vertices.shape[1])), axis=0)
-    return vertices
 
 
 def get_occlusion_stats(vertices, depth_image):

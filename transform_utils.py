@@ -121,3 +121,64 @@ def transform_from_world_to_pixel(points, intrinsic_mat, extrinsic_mat):
         # 点在像素坐标系中的坐标（含深度）
         points_2d.append((point_pixel[1], point_pixel[0], point_pixel[2]))
     return points_2d
+
+
+def get_vertices_pixel(intrinsic_mat, extrinsic_mat, obj_bbox, obj_transform, obj_tp):
+    """
+        将物体3d bounding box的顶点坐标投影到像素坐标系上
+
+        参数：
+            intrinsic_mat：相机内参矩阵
+            extrinsic_mat：相机外参矩阵
+            obj_bbox：物体bounding box
+            obj_transform：物体在CARLA中的位姿
+            obj_tp：物体的种类
+
+        返回：
+            vertices_pixel：3d bounding box的8个顶点在像素坐标系下的坐标
+    """
+    vertices = extension_to_vertices(obj_bbox)
+
+    # actors
+    if obj_tp == 1:
+        bbox_transform = carla.Transform(obj_bbox.location, obj_bbox.rotation)
+        vertices_local = transform_points(bbox_transform, vertices)
+    # 环境物体
+    else:
+        box_location = carla.Location(obj_bbox.location.x - obj_transform.location.x,
+                                      obj_bbox.location.y - obj_transform.location.y,
+                                      obj_bbox.location.z - obj_transform.location.z)
+        bbox_transform = carla.Transform(box_location, obj_bbox.rotation)
+        vertices_local = transform_points(bbox_transform, vertices)
+
+    # 获取3d bounding box在世界坐标系下八个顶点的坐标
+    vertices_world = transform_points(obj_transform, vertices_local)
+    # 将世界坐标系下的bbox八个顶点转换到像素坐标系中
+    vertices_pixel = transform_from_world_to_pixel(vertices_world, intrinsic_mat, extrinsic_mat)
+    return vertices_pixel
+
+
+def extension_to_vertices(obj_bbox):
+    """
+        从CARLA物体的bounding box得到车辆3D bounding box的八个顶点坐标（以车辆中心为原点的坐标系）
+
+        参数：
+            obj_bbox：CARLA物体的bounding box
+
+        返回：
+            vertices：车辆3D bounding box的八个顶点齐次坐标(以车辆中心为原点的坐标系）[4 × 8 矩阵]
+    """
+    ext = obj_bbox.extent
+    vertices = np.array([
+        [ext.x, ext.y, ext.z],  # Top left front
+        [- ext.x, ext.y, ext.z],  # Top left back
+        [ext.x, - ext.y, ext.z],  # Top right front
+        [- ext.x, - ext.y, ext.z],  # Top right back
+        [ext.x, ext.y, - ext.z],  # Bottom left front
+        [- ext.x, ext.y, - ext.z],  # Bottom left back
+        [ext.x, - ext.y, - ext.z],  # Bottom right front
+        [- ext.x, - ext.y, - ext.z]  # Bottom right back
+    ])
+    vertices = vertices.transpose()
+    vertices = np.append(vertices, np.ones((1, vertices.shape[1])), axis=0)
+    return vertices

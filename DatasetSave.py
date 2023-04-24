@@ -3,27 +3,23 @@ from utils import config_transform_to_carla_transform
 
 
 class DatasetSave:
-    def __init__(self, cfg):
-        self.cfg = cfg
+    def __init__(self, config):
+        self.config = config
         self.OUTPUT_FOLDER = None
         self.LIDAR_PATH = None
-        self.SEMANTIC_LIDAR_PATH = None
         self.KITTI_LABEL_PATH = None
-        # self.CARLA_LABEL_PATH = None
         self.IMAGE_PATH = None
         self.DEPTH_IMAGE_PATH = None
         self.BBOX_IMAGE_PATH = None
         self.CALIBRATION_PATH = None
         self.LIDAR_LABEL_PATH = None
-        self._generate_path(self.cfg["SAVE_CONFIG"]["ROOT_PATH"])
+        self._generate_path(self.config["SAVE_CONFIG"]["ROOT_PATH"])
         self.captured_frame_no = self._current_captured_frame_num()
 
     def _generate_path(self, root_path):
         """ 生成数据存储的路径"""
         PHASE = "training"
         self.OUTPUT_FOLDER = os.path.join(root_path, PHASE)
-        # folders = ['calib', 'image', 'kitti_label', 'carla_label', 'velodyne', 'bbox_img', 'lidar_bbox_img',
-        #            'semantic_lidar', 'lidar_label']
         folders = ['calib', 'image', 'image_label', 'bbox_img', 'velodyne', 'lidar_label']
 
         for folder in folders:
@@ -58,24 +54,24 @@ class DatasetSave:
         return num_existing_data_files
 
     def save_training_files(self, data):
-        lidar_fname = self.LIDAR_PATH.format(self.captured_frame_no)
-        kitti_label_fname = self.KITTI_LABEL_PATH.format(self.captured_frame_no)
-        img_fname = self.IMAGE_PATH.format(self.captured_frame_no)
-        bbox_img_fname = self.BBOX_IMAGE_PATH.format(self.captured_frame_no)
+        lidar_filename = self.LIDAR_PATH.format(self.captured_frame_no)
+        kitti_label_filename = self.KITTI_LABEL_PATH.format(self.captured_frame_no)
+        img_filename = self.IMAGE_PATH.format(self.captured_frame_no)
+        bbox_img_filename = self.BBOX_IMAGE_PATH.format(self.captured_frame_no)
         calib_filename = self.CALIBRATION_PATH.format(self.captured_frame_no)
-        lidar_label_fname = self.LIDAR_LABEL_PATH.format(self.captured_frame_no)
+        lidar_label_filename = self.LIDAR_LABEL_PATH.format(self.captured_frame_no)
 
         for agent, dt in data["agents_data"].items():
             extrinsic = dt["extrinsic"]
 
-            camera_transform = config_transform_to_carla_transform(self.cfg["SENSOR_CONFIG"]["RGB"]["TRANSFORM"])
-            lidar_transform = config_transform_to_carla_transform(self.cfg["SENSOR_CONFIG"]["LIDAR"]["TRANSFORM"])
+            camera_transform = config_transform_to_carla_transform(self.config["SENSOR_CONFIG"]["RGB"]["TRANSFORM"])
+            lidar_transform = config_transform_to_carla_transform(self.config["SENSOR_CONFIG"]["LIDAR"]["TRANSFORM"])
 
             save_ref_files(self.OUTPUT_FOLDER, self.captured_frame_no)
-            save_image_data(img_fname, dt["sensor_data"][0])
-            save_bbox_image_data(bbox_img_fname, dt["bbox_img"])
-            save_label_data(kitti_label_fname, dt["image_labels_kitti"])
+            save_image_data(img_filename, dt["sensor_data"][0])
+            save_bbox_image_data(bbox_img_filename, dt["bbox_img"])
+            save_label_data(kitti_label_filename, dt["image_labels_kitti"])
             save_calibration_matrices([camera_transform, lidar_transform], calib_filename, dt["intrinsic"])
-            save_lidar_data(lidar_fname, dt["sensor_data"][2], extrinsic)
-            save_label_data(lidar_label_fname, dt["pc_labels_kitti"])
+            save_lidar_data(lidar_filename, dt["sensor_data"][2], extrinsic)
+            save_label_data(lidar_label_filename, dt["pc_labels_kitti"])
         self.captured_frame_no += 1
