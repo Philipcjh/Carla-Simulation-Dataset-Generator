@@ -104,7 +104,7 @@ def is_visible_in_camera(agent, obj, rgb_image, depth_data, intrinsic, extrinsic
     else:
         vertices_pixel = get_vertices_pixel(intrinsic, extrinsic, obj_bbox, obj_transform, 1)
 
-    num_visible_vertices, num_vertices_outside_camera = get_occlusion_stats(vertices_in_image, depth_data)
+    num_visible_vertices, num_vertices_outside_camera = get_occlusion_stats(vertices_pixel, depth_data)
     if num_visible_vertices >= MIN_VISIBLE_VERTICES_FOR_RENDER and \
             num_vertices_outside_camera < MAX_OUT_VERTICES_FOR_RENDER:
         obj_tp = obj_type(obj)

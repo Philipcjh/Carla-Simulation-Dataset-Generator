@@ -1,5 +1,6 @@
 import numpy as np
 from numpy.linalg import inv
+import carla
 
 
 def midpoint_from_world_to_camera(location, extrinsic_mat):

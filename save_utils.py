@@ -55,8 +55,8 @@ def save_lidar_data(filename, point_cloud, extrinsic, format="bin"):
               |  /
               | /
         y<____|/
-        Which is a right handed coordinate sylstem
-        Therefore, we need to flip the y axis of the lidar in order to get the correct lidar format for kitti.
+        Which is a right-handed coordinate system
+        Therefore, we need to flip the y-axis of the lidar in order to get the correct lidar format for kitti.
         This corresponds to the following changes from Carla to Kitti
             Carla: X   Y   Z
             KITTI: X  -Y   Z
@@ -138,14 +138,11 @@ def save_calibration_matrices(transform, filename, intrinsic_mat):
                             [0, 0, -1],
                             [1, 0, 0]])
     '''
-    # Add translation vector from velo to camera. This is 0 because the position of camera and lidar is equal in our configuration.
+    # Add translation vector from velo to camera. This is 0 because the position of camera and lidar is equal in our
+    # configuration.
     TR_velodyne = np.column_stack((TR_velodyne, np.array([0, 0, 0])))
     TR_imu_to_velo = np.identity(3)
     TR_imu_to_velo = np.column_stack((TR_imu_to_velo, np.array([0, 0, 0])))
-
-    def write_flat(f, name, arr):
-        f.write("{}: {}\n".format(name, ' '.join(
-            map(str, arr.flatten(ravel_mode).squeeze()))))
 
     # All matrices are written on a line with spacing
     with open(filename, 'w') as f:
@@ -155,6 +152,12 @@ def save_calibration_matrices(transform, filename, intrinsic_mat):
         write_flat(f, "Tr_velo_to_cam", TR_velodyne)
         write_flat(f, "TR_imu_to_velo", TR_imu_to_velo)
     logging.info("Wrote all calibration matrices to %s", filename)
+
+
+def write_flat(file, name, arr):
+    ravel_mode = 'C'
+    file.write("{}: {}\n".format(name, ' '.join(
+        map(str, arr.flatten(ravel_mode).squeeze()))))
 
 
 def save_rgb_image(filename, image):

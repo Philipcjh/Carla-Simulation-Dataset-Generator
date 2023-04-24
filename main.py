@@ -34,7 +34,7 @@ def main():
                 print("开始记录...")
                 time_start = time.time()
                 dataset = scene.record_tick()
-                dataset_save.save_training_files(dataset)
+                dataset_save.save_datasets(dataset)
                 time_end = time.time()
                 print("记录完成！")
                 print("记录使用时间为%4fs" % (time_end - time_start))

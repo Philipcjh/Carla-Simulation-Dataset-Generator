@@ -11,6 +11,9 @@ class SimulationScene:
     def __init__(self, config):
         """
             初始化
+
+            参数：
+                config：预设配置
         """
         self.config = config
         self.client = carla.Client('localhost', 2000)
