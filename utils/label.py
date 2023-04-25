@@ -2,8 +2,8 @@ import carla
 import math
 from utils.utils import raw_image_to_rgb_array, yaml_to_config, depth_image_to_array
 from KittiDescriptor import KittiDescriptor
-from utils.visual_utils import *
-from utils.transform_utils import *
+from utils.visual import *
+from utils.transform import *
 
 config = yaml_to_config("configs.yaml")
 MAX_RENDER_DEPTH_IN_METERS = config["FILTER_CONFIG"]["MAX_RENDER_DEPTH_IN_METERS"]
