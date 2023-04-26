@@ -8,7 +8,7 @@
 ![image](framework.jpg)
 
 ## 环境配置 
-在环境为[Python>=3.6](https://www.python.org)和[carla >= 0.9.12](https://carla.readthedocs.io/en/0.9.12/)中进行下列安装：
+在环境为[Python>=3.6](https://www.python.org)和[carla>=0.9.12](https://carla.readthedocs.io/en/0.9.12/)中进行下列安装：
 
     git clone https://github.com/Philipcjh/Carla-Simulation-Dataset-Generator  # clone
     cd Carla-Simulation-Dataset-Generator
