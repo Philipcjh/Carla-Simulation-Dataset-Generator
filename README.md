@@ -18,7 +18,7 @@
 其中carla包的安装需要从本地导入，具体方法参考[基础API的使用](https://zhuanlan.zhihu.com/p/340031078)第0部分。
 
 ## 使用方法
-在CARLA中点击play，然后运行main.py文件。
+在CARLA中点击play，然后运行[main.py](main.py)文件。
 
 ## 参考代码
 本项目是参考[mmmmaomao/DataGenerator](https://github.com/mmmmaomao/DataGenerator)的代码修改而得到的。
