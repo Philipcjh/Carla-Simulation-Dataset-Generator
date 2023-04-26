@@ -20,4 +20,4 @@
 在CARLA中点击play，然后运行[main.py](main.py)文件。
 
 ## 参考代码
-本项目是参考[mmmmaomao/DataGenerator](https://github.com/mmmmaomao/DataGenerator)的代码修改而得到的。
+本项目是参考[mmmmaomao/DataGenerator](https://github.com/mmmmaomao/DataGenerator)修改而得到的。
