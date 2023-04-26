@@ -1,0 +1,4 @@
+numpy~=1.19.5
+carla~=0.9.12
+Pillow~=8.4.0
+PyYAML~=6.0
