@@ -5,6 +5,7 @@ import time
 
 
 def main():
+    # 加载配置文件
     config = yaml_to_config("configs.yaml")
     scene = SimulationScene(config)
     dataset_save = DatasetSave(config)
