@@ -26,7 +26,6 @@ class KittiDescriptor:
     """
     Kitti格式的label类
     """
-
     def __init__(self, type=None, bbox=None, dimensions=None, location=None, rotation_y=None, extent=None):
         self.type = type
         self.truncated = 0
