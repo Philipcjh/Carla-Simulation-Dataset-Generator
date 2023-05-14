@@ -47,8 +47,7 @@ def main():
                 print("记录使用时间为%4fs" % (time_end - time_start))
                 print("********************************************************")
             else:
-                # 运行帧
-                # print("场景运行中，不做记录")
+                # 运行帧(仅更新)
                 scene.world.tick()
 
             frame += 1
