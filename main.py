@@ -9,6 +9,7 @@ def main():
     config = yaml_to_config("configs.yaml")
     # 初始化仿真场景
     scene = SimulationScene(config)
+    # 初始化保存设置
     dataset_save = DatasetSave(config)
     try:
         # 设置场景地图
@@ -31,10 +32,10 @@ def main():
         # 帧数
         frame = 0
         # 记录步长
-        STEP = config["SAVE_CONFIG"]["STEP"]
+        step = config["SAVE_CONFIG"]["STEP"]
 
         while True:
-            if frame % STEP == 0:
+            if frame % step == 0:
                 # 记录帧
                 print("frame:%d" % frame)
                 print("开始记录...")
