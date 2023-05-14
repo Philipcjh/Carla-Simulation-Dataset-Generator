@@ -9,6 +9,10 @@ def main():
     scene = SimulationScene(config)
     dataset_save = DatasetSave(config)
     try:
+        # 设置场景地图
+        scene.set_map()
+        # 设置场景天气
+        scene.set_weather()
         # 开启同步模式
         scene.set_synchrony()
         # 在场景中生成actors(车辆与行人)

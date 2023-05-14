@@ -19,7 +19,7 @@ class SimulationScene:
         self.client = carla.Client('localhost', 2000)
         self.client.set_timeout(5.0)
         # 设置Carla地图
-        self.world = self.client.load_world('Town02')
+        self.world = None
         self.traffic_manager = self.client.get_trafficmanager()
         self.init_settings = None
         self.frame = None
@@ -27,14 +27,25 @@ class SimulationScene:
         self.data = {"sensor_data": {}, "environment_data": None}  # 记录每一帧的数据
         self.vehicle = None
 
+    def set_map(self):
+        """
+            设置场景地图
+        """
+        self.world = self.client.load_world('Town02')
+
+    def set_weather(self):
+        """
+            设置场景天气
+        """
+        weather = carla.WeatherParameters(cloudiness=0.0, precipitation=0.0, sun_altitude_angle=50.0)
+        self.world.set_weather(weather)
+
     def set_synchrony(self):
         """
             开启同步模式
         """
         self.init_settings = self.world.get_settings()
         settings = self.world.get_settings()
-        weather = carla.WeatherParameters(cloudiness=0.0, precipitation=0.0, sun_altitude_angle=50.0)
-        self.world.set_weather(weather)
         settings.synchronous_mode = True
         # 固定时间步长 (0.05s, 20fps)
         settings.fixed_delta_seconds = 0.05
@@ -267,4 +278,3 @@ class SimulationScene:
         dataset = spawn_dataset(data)
 
         return dataset
-
